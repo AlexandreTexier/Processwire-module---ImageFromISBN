@@ -17,6 +17,7 @@ class ImageFromISBN extends Process implements ConfigurableModule
 	  ];
 	}
   
+	// TODO : need some cleanup
 //'templatename' => '',
 
 	/**
