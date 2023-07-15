@@ -1,154 +1,109 @@
 <?php namespace ProcessWire;
 
-class ImageFromISBN extends Process implements ConfigurableModule
-{
-	public static function getModuleInfo()
-	{
-	  return [
-		'title' => 'Image from ISBN',
-		'summary' => 'Get book cover image from Open Library with its ISBN and adds it to a page',
-		'icon' => 'picture-o',
-		'version' => '1.0.0',
-		'author' => 'Alexandre Texier',
-		'autoload' => true,
-		'selectedTemplate' => '',
-		'selectedImageField' => '',
-		'selectedISBNField' => ''
-	  ];
+class ImageFromISBN extends Process implements ConfigurableModule {
+	public static function getModuleInfo() {
+		return [
+			'title' => 'Image from ISBN',
+			'summary' => 'Get a book cover image from Open Library API with its ISBN and adds it to a page',
+			'icon' => 'picture-o',
+			'version' => '1.0.0',
+			'author' => 'Alexandre Texier',
+			'autoload' => true,
+			'selectedTemplate' => '',
+			'selectedImageField' => '',
+			'selectedISBNField' => ''
+		];
 	}
-  
-	// TODO : need some cleanup
-//'templatename' => '',
 
-	/**
-	 * Construct
-	 * 
-	 * Here we set defaults for any configuration settings
-	 * 
-	 */
-	//public function __construct() {
-    //	parent::__construct(); // remember to call the parent
-    //	//$this->set('greeting', 'Happy hello world to you'); 
-    //	//$this->set('greetingType', 'message'); 
-  	//}
-
-  	public function ready() {
-  	  $this->pages->addHookBefore('save', function ($event) {
-  	    $page = $event->arguments(0);
-		//
-		$event->message("selected template = ".$this->selectedTemplate);
-		$event->message("page template = ". $page->template->id);
-
-		if($page->template->id == $this->selectedTemplate) {
-  	    //if($page->template == $this->templatename) {
-			$event->message("Is a book page");
-
-			$imagefield = $page->getField($this->selectedField);
-			$event->message($imagefield);
-			$isbnfield = $page->getField($this->selectedISBNField);
-
-
-
-  	      if($imagefield == '' && $isbnfield != ''){
-		// if($page->ouvrage_cover == '' && $page->ouvrage_isbn != ''){
-  	        $event->message("Fetching book cover");
+	public function ready() {
+		$this->pages->addHookAfter('save', function ($event) {
+			$page = $event->arguments(0);
 			//
-  	        $isbn = $page->$isbnfield;
-
-  	        // https://openlibrary.org/dev/docs/api/covers
-  	        $coverURL = "https://covers.openlibrary.org/b/isbn/".$isbn."-L.jpg?default=false";
-  	        //
-			$handle = curl_init($coverURL);
-			curl_setopt($handle,  CURLOPT_RETURNTRANSFER, TRUE);
-			// Get the HTML or whatever is linked in $url.
-			$response = curl_exec($handle);
-			// Check for 404 (file not found).
-			$httpCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
-			if($httpCode != 404) {
-				// Is not a 404, can add cover
-				$event->message("Book cover found");
-				$page->of(false);
-  	        	$page->ouvrage_cover->add($coverURL);
-  	        	//$page->save();
+			if ($page->template->id == $this->selectedTemplate) {
+				$event->message("Image from ISBN handler");
+				//
+				$imagefield = $page->getField($this->selectedImageField);
+				$isbnfield = $page->getField($this->selectedISBNField);
+				//
+				if ($page->$imagefield == '' && $page->$isbnfield != '') {
+					$event->message("Fetching book cover");
+					//
+					// More about OpenLibrary API: https://openlibrary.org/dev/docs/api/covers
+					$isbn = $page->$isbnfield;
+					$coverURL = "https://covers.openlibrary.org/b/isbn/" . $isbn . "-L.jpg?default=false";
+					//
+					// begin curl
+					$handle = curl_init($coverURL);
+					curl_setopt($handle,  CURLOPT_RETURNTRANSFER, TRUE);
+					// Get the HTML or whatever is linked in $url.
+					$response = curl_exec($handle);
+					// get url http code
+					$httpCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+					$event->message("http code = " . $httpCode);
+					if ($httpCode == 200) {
+						// Code is not a 200, the targeted cover exists, so adding it
+						$event->message("Book cover found");
+						$page->of(false);
+						$page->$imagefield->add($coverURL);
+						$page->save();
+					} else {
+						// code must be a 404
+						$event->warning("Book cover not found");
+					}
+					// end curl
+					curl_close($handle);
+				} else {
+					return;
+				}
 			} else {
-				$event->warning("Book cover not found");
+				return;
 			}
-			curl_close($handle);
-  	      } else{
-			$event->message("image field not empty");
-  	        return;
-  	      }
-  	    } else{
-			$event->message("Is NOT book page");
-  	      return;
-  	    }
-  	  });
-  	}
+		});
+	}
 
-  /**
-	* Get module configuration inputs
-	* 
-	* As an alternative, configuration can also be specified in an external file 
-	* with a PHP array. See an example in the /extras/ProcessHello.config.php file. 
-	* 
-	* @param InputfieldWrapper $inputfields
-	* 
-	*/
-  public function getModuleConfigInputfields(InputfieldWrapper $inputfields) {
-		//$modules = $this->wire()->modules;
-	
-		/** @var InputfieldText $f */
-		// $f = $modules->get('InputfieldText');
-		// $f->attr('name', 'templatename');
-		// $f->label = $this->_('Template name'); 
-		// $f->description = $this->_('what page template is concerned – only one required');
-		// $f->attr('value', $this->templatename); 
-		// $inputfields->add($f);
-	
-	
-		// Selected template for use in
+	public function getModuleConfigInputfields(InputfieldWrapper $inputfields) {
+		//
+		// Selected template for use by module
 		$f = $this->modules->get('InputfieldSelect');
 		$f->label = 'Selected Template';
-		$f->description = 'template where module will work, must contains fields specified below';
+		$f->description = 'Template where module will work, must contains fields specified below';
 		$f->columnWidth = 100;
 		$f->attr('name', 'selectedTemplate');
 		$f->attr('value', $this->selectedTemplate);
-		foreach($this->templates as $t) {
-			if(!($t->flags & Template::flagSystem)) {
+		foreach ($this->templates as $t) {
+			if (!($t->flags & Template::flagSystem)) {
 				$f->addOption($t->id, $t->name);
 			}
 		}
 		$f->collapsed = Inputfield::collapsedBlank;
 		$inputfields->add($f);
-
-	  	// Selected imagefield for use in
-	  	$f = $this->modules->get('InputfieldSelect');
-	  	$f->label = 'Selected Image Field';
-		$f->description = 'must be only image fieldtype with a max image size of 1';
+		//
+		// Selected imagefield for use by module
+		$f = $this->modules->get('InputfieldSelect');
+		$f->label = 'Selected Image Field';
+		$f->description = 'Must be an image fieldtype with a max image size of 1';
 		$f->columnWidth = 50;
-	  	$f->attr('name', 'selectedImageField');
-	  	$f->attr('value', $this->selectedImageField);
-	  	foreach($this->fields as $t) {
-	  		if(!($t->flags & Field::flagSystem)) {
-	  			$f->addOption($t->id, $t->name);
-	  		}
-	  	}
-	  	$f->collapsed = Inputfield::collapsedBlank;
-	  	$inputfields->add($f);
-
+		$f->attr('name', 'selectedImageField');
+		$f->attr('value', $this->selectedImageField);
+		foreach ($this->fields as $t) {
+			if (!($t->flags & Field::flagSystem) && $t->type instanceof FieldtypeImage) {
+				$f->addOption($t->id, $t->name);
+			}
+		}
+		$f->collapsed = Inputfield::collapsedBlank;
+		$inputfields->add($f);
+		//
 		// Selected isbn for use in
 		$f = $this->modules->get('InputfieldSelect');
 		$f->label = 'Selected ISBN Field';
-		$f->description = 'must be only integer fieldtype, optionnaly with ISBN regex patern';
+		$f->description = 'Must a text fieldtype, optionnaly with ISBN regex patern';
 		$f->columnWidth = 50;
 		$f->attr('name', 'selectedISBNField');
 		$f->attr('value', $this->selectedISBNField);
-		foreach($this->fields as $t) {
-		  if(!($t->flags & Field::flagSystem)) {
-			// if($t->getFieldtype() == "images"){
+		foreach ($this->fields as $t) {
+			if (!($t->flags & Field::flagSystem) && $t->type instanceof FieldtypeText) {
 				$f->addOption($t->id, $t->name);
-			// }
-		  }
+			}
 		}
 		$f->collapsed = Inputfield::collapsedBlank;
 		$inputfields->add($f);
